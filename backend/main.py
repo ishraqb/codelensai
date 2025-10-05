@@ -1,11 +1,12 @@
+# backend/main.py
 from fastapi import FastAPI, UploadFile, File, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional
+from backend.services import llm
 
 from backend.services import parser, explainer, graph
 
 app = FastAPI(title="CodeLensAI", version="0.2.0")
-from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
@@ -15,24 +16,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# -------- Models --------
 class CodeRequest(BaseModel):
     code: str
+    language: str | None = "python"
 
-# -------- Health --------
+
 @app.get("/")
 def root():
     return {"message": "Welcome to CodeLensAI 🚀"}
 
-# -------- JSON endpoints --------
 @app.post("/explain")
 def explain(req: CodeRequest):
     try:
         ir = parser.parse_python_to_ir(req.code)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Parse error: {e}")
-    rows = explainer.explain_ir(ir)  # list[{line, indent, text}]
-    return {"explanation": rows, "ir": ir}
+    rows = explainer.explain_ir(ir)
+    diagram = graph.ir_to_mermaid(ir)          # ← add this
+    return {"explanation": rows, "ir": ir, "diagram": diagram}  # ← and return it
 
 @app.post("/mermaid")
 def mermaid(req: CodeRequest):
@@ -98,4 +99,37 @@ async def analyze_file(
     }
     if include_ir:
         payload["ir"] = ir
+    return payload
+
+@app.post("/explain_plus")
+def explain_plus(req: CodeRequest):
+    """
+    AI-enhanced explanation. For Python, we also include the diagram.
+    For other languages, returns narrative only (for now).
+    """
+    try:
+        ir = parser.parse_python_to_ir(req.code) if req.language == "python" else None
+    except Exception as e:
+        ir = None
+
+    rows = []
+    diagram = None
+    if ir:
+        rows = explainer.explain_ir(ir)
+        try:
+            diagram = graph.ir_to_mermaid(ir)
+        except Exception:
+            diagram = None
+
+    # Always try to enhance with LLM if available
+    try:
+        narrative = llm.enhance_explanation(req.code, rows)
+    except Exception as e:
+        narrative = f"(AI enhancement unavailable) {e}"
+
+    payload = {
+        "explanation": rows,
+        "diagram": diagram,
+        "narrative": narrative,
+    }
     return payload

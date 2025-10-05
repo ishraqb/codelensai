@@ -1,179 +1,181 @@
 # backend/services/graph.py
-from typing import Any, Dict, List, Tuple
 
+from __future__ import annotations
+from typing import Any, Dict, List
+
+"""
+IR → Mermaid flowchart generator
+
+Expected IR (shape your parser already returns), e.g.
+{
+  "kind": "Module",
+  "body": [
+    {
+      "kind": "FunctionDef",
+      "summary": "def two_sum(nums, target)",
+      "line": 1,
+      "name": "two_sum",
+      "args": ["nums", "target"],
+      "body": [
+        {"kind": "Assign", "summary": "assign seen", ...},
+        {"kind": "For", "summary": "for-loop", "target": "(i, x)", "iter": "enumerate(nums)", "body": [...]},
+        {"kind": "Return", "summary": "return", "value": "[]"}
+      ]
+    }
+  ]
+}
+"""
+
+# ---------------- utils ---------------- #
+
+def _clean(s: Any) -> str:
+    """Make labels Mermaid-safe: no newlines, no double-quotes."""
+    if s is None:
+        return ""
+    s = str(s)
+    s = s.replace("\n", " ").replace("\r", " ")
+    s = s.replace('"', "'")
+    return s.strip()
+
+
+class _Builder:
+    """Small helper to construct Mermaid lines + unique node ids."""
+    def __init__(self) -> None:
+        self.lines: List[str] = ["flowchart TD"]
+        self._i = 0
+
+    def new_id(self, prefix: str = "N") -> str:
+        self._i += 1
+        return f"{prefix}{self._i}"
+
+    def rect(self, label: str) -> str:
+        nid = self.new_id()
+        self.lines.append(f'{nid}["{_clean(label)}"]')
+        return nid
+
+    def diamond(self, label: str) -> str:
+        nid = self.new_id()
+        self.lines.append(f'{nid}{{"{_clean(label)}"}}')
+        return nid
+
+    def connect(self, a: str, b: str, label: str | None = None) -> None:
+        if label:
+            self.lines.append(f'{a} --|{_clean(label)}|--> {b}')
+        else:
+            self.lines.append(f"{a} --> {b}")
+
+    def chain(self, nodes: List[str]) -> None:
+        for u, v in zip(nodes, nodes[1:]):
+            self.connect(u, v)
+
+
+# --------------- main API --------------- #
 
 def ir_to_mermaid(ir: Dict[str, Any]) -> str:
     """
-    Convert our IR (from parser.parse_python_to_ir) into a Mermaid flowchart.
-
-    Supported IR 'kind' values:
-      - FunctionDef { name, args, body }
-      - If { test, body, orelse [, elif=True] }   # elif appears as an If in orelse with 'elif': True
-      - For { target, iter, body, orelse }
-      - While { test, body, orelse }
-      - Assign { targets: [..], value }
-      - AugAssign { target, op, value }
-      - Return { value }
-      - (fallback) any node with 'summary'
-
-    Design:
-      - Conditions are diamonds.
-      - Each function body is wrapped in a subgraph.
-      - No cross-linking between top-level functions.
-      - A single merge node is used per if/elif/else chain.
+    Convert CodeLensAI IR to a Mermaid flowchart string.
     """
-    lines: List[str] = ["flowchart TD"]
-    counter = {"n": 0}
+    b = _Builder()
 
-    def _nid(prefix: str = "n") -> str:
-        counter["n"] += 1
-        return f"{prefix}{counter['n']}"
-
-    def _sanitize(label: str) -> str:
-        # keep mermaid happy
-        return (
-            str(label)
-            .replace('"', '\\"')
-            .replace("[", "(")
-            .replace("]", ")")
-            .replace("{", "(")
-            .replace("}", ")")
-        )
-
-    def add_node(label: str, shape: str = "rect") -> str:
-        node = _nid()
-        safe = _sanitize(label)
-        if shape == "diamond":
-            lines.append(f'  {node}{{"{safe}"}}')
-        else:
-            lines.append(f'  {node}["{safe}"]')
-        return node
-
-    def add_edge(a: str, b: str, lbl: str = "") -> None:
-        lines.append(f"  {a} --|{lbl}|--> {b}" if lbl else f"  {a} --> {b}")
-
-    def walk_block(stmts: List[Dict[str, Any]], *, top_level: bool = False) -> Tuple[str, str]:
+    def walk(stmt: Dict[str, Any]) -> List[str]:
         """
-        Returns (first_node_id, last_node_id) for the emitted chunk.
-        If top_level=True, we do not chain siblings when both are FunctionDef.
+        Walk a single statement and return a *sequence* of visible node ids
+        representing its entry→...→exit path. The last id is considered the "tail".
         """
-        first = last = None
-        prev: str | None = None
+        kind = stmt.get("kind")
+        summary = stmt.get("summary") or kind or "stmt"
 
-        for s in stmts:
-            k = s.get("kind")
-            node: str | None = None
+        # ---- Structured statements ----
 
-            # -------- Function --------
-            if k == "FunctionDef":
-                header = add_node(f"def {s.get('name')}({', '.join(s.get('args', []))})")
-                body_first, body_last = walk_block(s.get("body", []), top_level=False)
-                if body_first:
-                    lines.append(f"  subgraph {s.get('name')}_body")
-                    add_edge(header, body_first)
-                    lines.append("  end")
-                    node = body_last or body_first
-                else:
-                    node = header
+        if kind == "FunctionDef":
+            head = b.rect(summary)
+            body_ids: List[str] = []
+            for child in stmt.get("body", []):
+                body_ids.extend(walk(child))
+            seq = [head] + body_ids if body_ids else [head]
+            b.chain(seq)
+            return seq
 
-                # do NOT chain top-level functions together
-                if not top_level and prev:
-                    add_edge(prev, node)
-                first = first or node
-                prev = None  # break the chain at top level between functions
-                last = node
-                continue
+        if kind == "If":
+            # decision
+            test = b.diamond(f"{_clean(stmt.get('test'))} ?")
+            # then-branch
+            then_ids: List[str] = []
+            for child in stmt.get("body", []):
+                then_ids.extend(walk(child))
+            # exit join
+            exit_id = b.rect("next")
+            if then_ids:
+                b.connect(test, then_ids[0], "true")
+                b.chain(then_ids)
+                b.connect(then_ids[-1], exit_id)
+            # false to exit
+            b.connect(test, exit_id, "false")
+            return [test, exit_id]
 
-            # -------- If / Elif / Else (single merge) --------
-            if k == "If":
-                cond = add_node(f"If {s.get('test')}", shape="diamond")
-                then_first, then_last = walk_block(s.get("body", []))
-                merge = add_node("merge")
+        if kind == "For":
+            # for-loop as decision with loop body + back-edge + exit
+            target = _clean(stmt.get("target"))
+            iter_ = _clean(stmt.get("iter"))
+            dec = b.diamond(f"for {target} in {iter_} ?")
+            body_ids: List[str] = []
+            for child in stmt.get("body", []):
+                body_ids.extend(walk(child))
+            if body_ids:
+                b.connect(dec, body_ids[0], "yes")
+                b.chain(body_ids)
+                b.connect(body_ids[-1], dec)  # back-edge
+            exit_id = b.rect("after for")
+            b.connect(dec, exit_id, "no")
+            return [dec, exit_id]
 
-                if then_first:
-                    add_edge(cond, then_first, "true")
-                if then_last:
-                    add_edge(then_last, merge)
+        if kind == "While":
+            # while-loop decision, body, back-edge, exit
+            dec = b.diamond(f"{_clean(stmt.get('test'))} ?")
+            body_ids: List[str] = []
+            for child in stmt.get("body", []):
+                body_ids.extend(walk(child))
+            if body_ids:
+                b.connect(dec, body_ids[0], "true")
+                b.chain(body_ids)
+                b.connect(body_ids[-1], dec)  # loop back
+            exit_id = b.rect("after while")
+            b.connect(dec, exit_id, "false")
+            return [dec, exit_id]
 
-                # orelse might begin with an elif If-node marked by 'elif': True
-                else_nodes = s.get("orelse", [])
-                elif_chain = (
-                    len(else_nodes) == 1
-                    and isinstance(else_nodes[0], dict)
-                    and else_nodes[0].get("kind") == "If"
-                    and else_nodes[0].get("elif")
-                )
+        # ---- Simple statements ----
 
-                if elif_chain:
-                    el = else_nodes[0]
-                    elif_cond = add_node(f"Elif {el.get('test')}", shape="diamond")
-                    add_edge(cond, elif_cond, "false")
-                    e_then_first, e_then_last = walk_block(el.get("body", []))
-                    if e_then_first:
-                        add_edge(elif_cond, e_then_first, "true")
-                    if e_then_last:
-                        add_edge(e_then_last, merge)
+        if kind == "Assign":
+            # e.g., "assign seen" or pretty-print targets/value if present
+            lbl = summary
+            targets = stmt.get("targets")
+            value = stmt.get("value")
+            if targets is not None and value is not None:
+                lbl = f"assign {', '.join(map(_clean, targets))} = { _clean(value) }"
+            return [b.rect(lbl)]
 
-                    # possible trailing else of that elif
-                    trailing = el.get("orelse", [])
-                    if trailing:
-                        t_first, t_last = walk_block(trailing)
-                        if t_first:
-                            add_edge(elif_cond, t_first, "false")
-                        if t_last:
-                            add_edge(t_last, merge)
-                else:
-                    # plain else block
-                    e_first, e_last = walk_block(else_nodes)
-                    if e_first:
-                        add_edge(cond, e_first, "false")
-                    if e_last:
-                        add_edge(e_last, merge)
+        if kind == "AugAssign":
+            # e.g., "i += 1"
+            target = _clean(stmt.get("target"))
+            op = _clean(stmt.get("op") or "")
+            value = _clean(stmt.get("value"))
+            lbl = f"{target} {op and op.lower()}= {value}".replace("add=", "+=")
+            return [b.rect(lbl)]
 
-                node = merge
+        if kind == "Return":
+            val = stmt.get("value")
+            lbl = f"return { _clean(val) }" if val is not None else "return"
+            return [b.rect(lbl)]
 
-            # -------- For --------
-            elif k == "For":
-                head = add_node(f"For {s.get('target')} in {s.get('iter')}", shape="diamond")
-                b_first, b_last = walk_block(s.get("body", []))
-                if b_first:
-                    add_edge(head, b_first, "yes")
-                    add_edge(b_last or b_first, head)  # loop back
-                after = add_node("after for")
-                add_edge(head, after, "no")
-                node = after
+        # Fallback: generic rectangle
+        return [b.rect(summary)]
 
-            # -------- While --------
-            elif k == "While":
-                head = add_node(f"While {s.get('test')}", shape="diamond")
-                b_first, b_last = walk_block(s.get("body", []))
-                if b_first:
-                    add_edge(head, b_first, "yes")
-                    add_edge(b_last or b_first, head)  # loop back
-                after = add_node("after while")
-                add_edge(head, after, "no")
-                node = after
+    # Top level — stitch sequentially
+    last_tail: str | None = None
+    for top in ir.get("body", []):
+        seq = walk(top)
+        if last_tail:
+            b.connect(last_tail, seq[0])
+        last_tail = seq[-1] if seq else last_tail
 
-            # -------- Assign / AugAssign / Return --------
-            elif k == "Assign":
-                node = add_node(f"Assign {s.get('targets', [])} = {s.get('value')}")
-            elif k == "AugAssign":
-                node = add_node(f"{s.get('target')} {s.get('op','Add')}= {s.get('value')}")
-            elif k == "Return":
-                node = add_node(f"Return {s.get('value')}")
-
-            # -------- Fallback --------
-            else:
-                node = add_node(s.get("summary", k))
-
-            # normal chaining (except between top-level functions handled above)
-            if prev:
-                add_edge(prev, node)
-            first = first or node
-            prev = last = node
-
-        return first or "", last or ""
-
-    # kick off at module level
-    walk_block(ir.get("body", []), top_level=True)
-    return "\n".join(lines)
+    return "\n".join(b.lines)
