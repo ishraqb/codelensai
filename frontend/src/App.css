@@ -1,42 +1,190 @@
-#root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+/* === THEME TOKENS ====================================== */
+:root {
+  --bg: #0b1220;
+  --fg: #e6edf3;
+  --muted: #a9b1bb;
+
+  --panel-1: #0f172a;      /* cards */
+  --panel-2: #131c33;      /* active */
+  --border: #1e2a44;
+  --accent: #22c55e;       /* Explain button */
+  --accent-fg: #0b1220;
+  --btn: #0f172a;
+  --btn-fg: var(--fg);
+  --btn-hover: #12203c;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+[data-theme="light"] {
+  --bg: #f6f7fb;
+  --fg: #0b1220;
+  --muted: #5a6676;
+
+  --panel-1: #ffffff;
+  --panel-2: #eef1f7;
+  --border: #d8dee9;
+  --accent: #22c55e;
+  --accent-fg: #0b1220;
+  --btn: #ffffff;
+  --btn-fg: var(--fg);
+  --btn-hover: #eef1f7;
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+/* ==============
+   GLOBAL LAYOUT
+   ============== */
+html, body, #root { height: 100%; width: 100%; }
+* { box-sizing: border-box; }
+html, body { background: var(--bg) !important; }
+body {
+  margin: 0;
+  color: var(--fg);
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
+.page {
+  min-height: 100%;
+  width: 100%;
+  display: flex;
+  justify-content: center;      /* centers horizontally */
+  align-items: flex-start;
+  padding: 28px 18px;
+  background: var(--bg);        /* ensure no white edges */
 }
 
+.container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;               /* true centering */
+}
+
+/* =======
+   HEADER
+   ======= */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.title { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: .2px; }
+.subtitle { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+.controls-row { display: flex; align-items: center; gap: 10px; }
+.hint { font-size: 12px; color: var(--muted); }
+
+/* =====
+   CARD
+   ===== */
 .card {
-  padding: 2em;
+  background: var(--panel-1);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+  margin-bottom: 14px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.22);
 }
 
-.read-the-docs {
-  color: #888;
+.card-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
 }
+.card-title { font-weight: 600; letter-spacing: .3px; }
+
+/* ========
+   BUTTONS
+   ======== */
+.btn {
+  border: 1px solid var(--border);
+  background: var(--btn);
+  color: var(--btn-fg);
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background .15s ease, transform .02s ease;
+}
+.btn:hover { background: var(--btn-hover); }
+.btn:active { transform: translateY(1px); }
+.btn.primary {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: transparent;
+}
+.btn.primary:hover { filter: brightness(0.96); }
+
+/* =====
+   TABS
+   ===== */
+.tabs-row { display: flex; gap: 8px; }
+.tab-btn {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-1);
+  color: var(--fg);
+  font-size: 12px;
+  cursor: pointer;
+}
+.tab-btn.active { background: var(--panel-2); }
+
+/* ==========
+   CARD BODY
+   ========== */
+.card-body { }
+
+.run-after {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.run-after label { color: var(--muted); }
+.run-after input {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  background: var(--panel-2);
+  color: var(--fg);
+  border: 1px solid var(--border);
+}
+
+/* =========
+   STATUS
+   ========= */
+.status { color: var(--muted); }
+
+/* ================
+   CODEMIRROR TWEAK
+   ================ */
+.cm-editor {
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #0e1526; /* darker for contrast in dark */
+}
+[data-theme="light"] .cm-editor { background: #f5f7fb; }
+
+/* =========================
+   MERMAID / FLOWCHART FIXES
+   ========================= */
+.flowchart-box { background: var(--panel-2); }
+.flowchart-box svg {
+  display: block !important;
+  width: 100% !important;
+  height: auto !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: transparent !important; /* kill white band */
+}
+.flowchart-box svg > rect.background,
+.flowchart-box svg > rect[class*="background"] {
+  fill: transparent !important;
+  stroke: transparent !important;
+}
+.flowchart-box .edgeLabel { background: transparent !important; color: var(--fg) !important; }

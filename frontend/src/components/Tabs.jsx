@@ -1,20 +1,19 @@
-export default function Tabs({ value, onChange, items }) {
+export default function Tabs({ tabs = [], value, onChange }) {
+    const list = Array.isArray(tabs) ? tabs : [];
     return (
-      <div className="inline-flex rounded-xl border border-zinc-800 overflow-hidden">
-        {items.map((it) => (
-          <button
-            key={it.value}
-            onClick={() => onChange(it.value)}
-            className={
-              "px-3 py-1.5 text-sm " +
-              (value === it.value
-                ? "bg-zinc-800 text-zinc-100"
-                : "bg-transparent text-zinc-400 hover:text-zinc-200")
-            }
-          >
-            {it.label}
-          </button>
-        ))}
+      <div className="tabs-row">
+        {list.map((t) => {
+          const active = t.key === value;
+          return (
+            <button
+              key={t.key}
+              onClick={() => onChange?.(t.key)}
+              className={`tab-btn ${active ? "active" : ""}`}
+            >
+              {t.label}
+            </button>
+          );
+        })}
       </div>
     );
   }
