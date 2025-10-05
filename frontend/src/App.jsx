@@ -1,5 +1,6 @@
 import { useState } from "react";
 import CodeEditor from "./components/CodeEditor";
+import OutputPanel from "./components/OutputPanel";
 
 export default function App() {
   const [code, setCode] = useState(
@@ -21,6 +22,7 @@ export default function App() {
     setError("");
     setResult(null);
     try {
+      // Adjust URL if your route is different (e.g., /api/explain)
       const res = await fetch("http://127.0.0.1:8000/explain", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -31,7 +33,7 @@ export default function App() {
         throw new Error(msg || `HTTP ${res.status}`);
       }
       const data = await res.json();
-      setResult(data); // whatever your FastAPI returns (explanation rows, diagram, etc.)
+      setResult(data); // expects { explanation: [...], diagram: "mermaid graph", ... }
     } catch (e) {
       setError(String(e.message || e));
     } finally {
@@ -39,8 +41,8 @@ export default function App() {
     }
   }
 
-  // Optional stub if you add a /run endpoint later
-  async function run() {
+  // Optional: wire this later to a /run endpoint
+  function run() {
     alert("Run not implemented yet — focus on Explain first.");
   }
 
@@ -57,25 +59,13 @@ export default function App() {
         language="python"
         value={code}
         onChange={setCode}
-        onRun={run}          // ⌘/Ctrl+Enter (stub for now)
+        onRun={run}          // ⌘/Ctrl+Enter
         onExplain={explain}  // ⌥/Alt+Enter
         height="480px"
         placeholder="Paste your Python function…"
       />
 
-      <div className="mt-4">
-        {loading && <div className="text-sm text-zinc-400">Explaining…</div>}
-        {error && (
-          <pre className="mt-2 p-3 rounded-xl bg-zinc-900 ring-1 ring-zinc-800 text-red-400 whitespace-pre-wrap">
-            {error}
-          </pre>
-        )}
-        {result && (
-          <pre className="mt-2 p-3 rounded-xl bg-zinc-900 ring-1 ring-zinc-800 overflow-auto">
-            {JSON.stringify(result, null, 2)}
-          </pre>
-        )}
-      </div>
+      <OutputPanel result={result} error={error} loading={loading} />
     </div>
   );
 }
