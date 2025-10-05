@@ -27,6 +27,7 @@ export default function App() {
     setError("");
     setResult(null);
     try {
+      // Adjust URL if your route is different (e.g., /api/explain)
       const res = await fetch("http://127.0.0.1:8000/explain", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -38,6 +39,7 @@ export default function App() {
       }
       const data = await res.json();
       setResult(data); // expects { explanation, diagram, ... }
+      setResult(data); // expects { explanation: [...], diagram: "mermaid graph", ... }
     } catch (e) {
       setError(String(e.message || e));
     } finally {
@@ -45,6 +47,7 @@ export default function App() {
     }
   }
 
+  // Optional: wire this later to a /run endpoint
   function run() {
     alert("Run not implemented yet — focus on Explain first.");
   }
