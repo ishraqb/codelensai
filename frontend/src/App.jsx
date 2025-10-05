@@ -1,7 +1,10 @@
 import { useState } from "react";
 import CodeEditor from "./components/CodeEditor";
+import OutputPanel from "./components/OutputPanel";
+import LanguageToggle from "./components/LanguageToggle";
 
 export default function App() {
+  const [language, setLanguage] = useState("python");
   const [code, setCode] = useState(
 `def two_sum(nums, target):
     seen = {}
@@ -11,12 +14,15 @@ export default function App() {
         seen[x] = i
     return []`
   );
-
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
 
   async function explain() {
+    if (language !== "python") {
+      setError("Explanation currently supports Python only.");
+      return;
+    }
     setLoading(true);
     setError("");
     setResult(null);
@@ -24,14 +30,14 @@ export default function App() {
       const res = await fetch("http://127.0.0.1:8000/explain", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
+        body: JSON.stringify({ code, language }),
       });
       if (!res.ok) {
         const msg = await res.text();
         throw new Error(msg || `HTTP ${res.status}`);
       }
       const data = await res.json();
-      setResult(data); // whatever your FastAPI returns (explanation rows, diagram, etc.)
+      setResult(data); // expects { explanation, diagram, ... }
     } catch (e) {
       setError(String(e.message || e));
     } finally {
@@ -39,8 +45,7 @@ export default function App() {
     }
   }
 
-  // Optional stub if you add a /run endpoint later
-  async function run() {
+  function run() {
     alert("Run not implemented yet — focus on Explain first.");
   }
 
@@ -48,34 +53,25 @@ export default function App() {
     <div className="min-h-screen bg-black text-zinc-100 p-6 space-y-4">
       <header className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">CodeLensAI</h1>
-        <div className="text-sm text-zinc-400">
-          ⌘/Ctrl+Enter → Run · ⌥/Alt+Enter → Explain
+        <div className="flex items-center gap-6">
+          <div className="text-sm text-zinc-400">
+            ⌘/Ctrl+Enter → Run · ⌥/Alt+Enter → Explain
+          </div>
+          <LanguageToggle value={language} onChange={setLanguage} />
         </div>
       </header>
 
       <CodeEditor
-        language="python"
+        language={language}
         value={code}
         onChange={setCode}
-        onRun={run}          // ⌘/Ctrl+Enter (stub for now)
+        onRun={run}          // ⌘/Ctrl+Enter
         onExplain={explain}  // ⌥/Alt+Enter
         height="480px"
-        placeholder="Paste your Python function…"
+        placeholder={`Paste your ${language} function…`}
       />
 
-      <div className="mt-4">
-        {loading && <div className="text-sm text-zinc-400">Explaining…</div>}
-        {error && (
-          <pre className="mt-2 p-3 rounded-xl bg-zinc-900 ring-1 ring-zinc-800 text-red-400 whitespace-pre-wrap">
-            {error}
-          </pre>
-        )}
-        {result && (
-          <pre className="mt-2 p-3 rounded-xl bg-zinc-900 ring-1 ring-zinc-800 overflow-auto">
-            {JSON.stringify(result, null, 2)}
-          </pre>
-        )}
-      </div>
+      <OutputPanel result={result} error={error} loading={loading} />
     </div>
   );
 }
