@@ -3,8 +3,12 @@ from pydantic import BaseModel
 from typing import Optional
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.services import parser, explainer, graph
-from backend.services.runner import run_python  # NEW
+from services import parser, explainer, graph
+try:
+    from services.runner import run_python
+except Exception:
+    run_python = None
+
 
 app = FastAPI(title="CodeLensAI", version="0.5.0")
 
