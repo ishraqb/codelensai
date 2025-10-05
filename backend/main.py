@@ -1,13 +1,14 @@
-# backend/main.py
 from fastapi import FastAPI, UploadFile, File, HTTPException, Query
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from backend.services import llm
+from typing import Optional
+from fastapi.middleware.cors import CORSMiddleware
 
 from backend.services import parser, explainer, graph
+from backend.services.runner import run_python  # NEW
 
-app = FastAPI(title="CodeLensAI", version="0.2.0")
+app = FastAPI(title="CodeLensAI", version="0.5.0")
 
+# ---------- CORS ----------
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
@@ -16,27 +17,41 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ---------- Models ----------
 class CodeRequest(BaseModel):
     code: str
-    language: str | None = "python"
+    language: Optional[str] = "python"
+    postlude: Optional[str] = None  # NEW
 
 
+# ---------- Health ----------
 @app.get("/")
 def root():
     return {"message": "Welcome to CodeLensAI 🚀"}
 
+# ---------- Explain ----------
 @app.post("/explain")
 def explain(req: CodeRequest):
+    if (req.language or "python").lower() != "python":
+        raise HTTPException(status_code=400, detail="Only Python is supported for now.")
     try:
         ir = parser.parse_python_to_ir(req.code)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Parse error: {e}")
-    rows = explainer.explain_ir(ir)
-    diagram = graph.ir_to_mermaid(ir)          # ← add this
-    return {"explanation": rows, "ir": ir, "diagram": diagram}  # ← and return it
+
+    explanation = explainer.explain_ir(ir)
+    diagram = None
+    try:
+        diagram = graph.ir_to_mermaid(ir)
+    except Exception:
+        pass
+
+    return {"explanation": explanation, "ir": ir, "diagram": diagram}
 
 @app.post("/mermaid")
 def mermaid(req: CodeRequest):
+    if (req.language or "python").lower() != "python":
+        raise HTTPException(status_code=400, detail="Only Python is supported for now.")
     try:
         ir = parser.parse_python_to_ir(req.code)
     except Exception as e:
@@ -44,92 +59,38 @@ def mermaid(req: CodeRequest):
     diagram = graph.ir_to_mermaid(ir)
     return {"mermaid": diagram}
 
-# -------- File upload endpoints --------
-@app.post("/explain-file")
-async def explain_file(file: UploadFile = File(...)):
-    try:
-        code = (await file.read()).decode("utf-8")
-        ir = parser.parse_python_to_ir(code)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Parse error: {e}")
-    rows = explainer.explain_ir(ir)
-    return {"explanation": rows, "ir": ir}
+# ---------- Run (NEW) ----------
+@app.post("/run")
+def run(req: CodeRequest):
+    if (req.language or "python").lower() != "python":
+        raise HTTPException(status_code=400, detail="Only Python is supported for now.")
+    result = run_python(req.code, timeout_sec=3, postlude=req.postlude or "")
+    return result
 
-@app.post("/mermaid-file")
-async def mermaid_file(file: UploadFile = File(...)):
-    try:
-        code = (await file.read()).decode("utf-8")
-        ir = parser.parse_python_to_ir(code)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Parse error: {e}")
-    diagram = graph.ir_to_mermaid(ir)
-    return {"mermaid": diagram}
+@app.post("/run-file")
+async def run_file(file: UploadFile = File(...)):
+    code = (await file.read()).decode("utf-8")
+    result = run_python(code, timeout_sec=3)
+    return result
 
-# -------- Combined endpoint (best for UI) --------
+# ---------- Combined ----------
 @app.post("/analyze")
 def analyze(req: CodeRequest, include_ir: bool = Query(False)):
-    ir = parser.parse_python_to_ir(req.code)
-    rows = explainer.explain_ir(ir)   # list of {line, indent, text}
-    diagram = graph.ir_to_mermaid(ir)
-    payload = {"explanation": rows, "mermaid": diagram}
-    if include_ir: payload["ir"] = ir
-    return payload
-
-
-@app.post("/analyze-file")
-async def analyze_file(
-    file: UploadFile = File(...),
-    include_ir: bool = Query(False, description="Include raw IR in the response"),
-):
-    """
-    Same as /analyze but accepts a .py upload.
-    """
+    if (req.language or "python").lower() != "python":
+        raise HTTPException(status_code=400, detail="Only Python is supported for now.")
     try:
-        code = (await file.read()).decode("utf-8")
-        ir = parser.parse_python_to_ir(code)
+        ir = parser.parse_python_to_ir(req.code)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Parse error: {e}")
 
-    rows = explainer.explain_ir(ir)
-    diagram = graph.ir_to_mermaid(ir)
+    explanation = explainer.explain_ir(ir)
+    diagram = None
+    try:
+        diagram = graph.ir_to_mermaid(ir)
+    except Exception:
+        pass
 
-    payload = {
-        "explanation": rows,
-        "mermaid": diagram,
-    }
+    payload = {"explanation": explanation, "diagram": diagram}
     if include_ir:
         payload["ir"] = ir
-    return payload
-
-@app.post("/explain_plus")
-def explain_plus(req: CodeRequest):
-    """
-    AI-enhanced explanation. For Python, we also include the diagram.
-    For other languages, returns narrative only (for now).
-    """
-    try:
-        ir = parser.parse_python_to_ir(req.code) if req.language == "python" else None
-    except Exception as e:
-        ir = None
-
-    rows = []
-    diagram = None
-    if ir:
-        rows = explainer.explain_ir(ir)
-        try:
-            diagram = graph.ir_to_mermaid(ir)
-        except Exception:
-            diagram = None
-
-    # Always try to enhance with LLM if available
-    try:
-        narrative = llm.enhance_explanation(req.code, rows)
-    except Exception as e:
-        narrative = f"(AI enhancement unavailable) {e}"
-
-    payload = {
-        "explanation": rows,
-        "diagram": diagram,
-        "narrative": narrative,
-    }
     return payload
