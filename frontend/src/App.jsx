@@ -1,31 +1,20 @@
 import { useEffect, useState } from "react";
 import CodeEditor from "./components/CodeEditor";
-import OutputPanel from "./components/OutputPanel.jsx";
-import LanguageToggle from "./components/LanguageToggle.jsx";
-import Tabs from "./components/Tabs.jsx";
-
-function ThemeToggle({ theme, onChange }) {
-  const next = theme === "dark" ? "light" : "dark";
-  return (
-    <button
-      onClick={() => onChange(next)}
-      className="px-3 py-1 rounded-xl border border-zinc-700 text-sm text-zinc-200 hover:bg-zinc-800"
-      title={`Switch to ${next} theme`}
-    >
-      {theme === "dark" ? "🌙 Dark" : "☀️ Light"}
-    </button>
-  );
-}
+import OutputPanel from "./components/OutputPanel";
+import ThemeToggle from "./components/ThemeToggle";
+import LanguageToggle from "./components/LanguageToggle";
+import Tabs from "./components/Tabs";
+import "./App.css";
 
 export default function App() {
   // Theme
   const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "dark");
   useEffect(() => {
     localStorage.setItem("theme", theme);
-    document.documentElement.classList.toggle("dark", theme === "dark");
+    document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
 
-  // Editor
+  // Editor state
   const [language, setLanguage] = useState("python");
   const [code, setCode] = useState(
 `def two_sum(nums, target):
@@ -36,39 +25,30 @@ export default function App() {
         seen[x] = i
     return []`
   );
+  const [runAfter, setRunAfter] = useState("print(two_sum([2,7,11,15], 9))");
 
-  // Results
+  // Results state
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState(null);
   const [error, setError] = useState("");
+  const [result, setResult] = useState(null);        // explanation/flow
+  const [runResult, setRunResult] = useState(null);  // run output
+  const [tab, setTab] = useState("explain");         // 'explain' | 'flow' | 'output'
 
-  // UI state
-  const [tab, setTab] = useState("explain"); // 'explain' | 'flow'
-  const [useAI, setUseAI] = useState(true);  // AI-enhanced explanation toggle
-
+  // Actions
   async function explain() {
     setLoading(true);
     setError("");
     setResult(null);
-
-    const isPython = language === "python";
-    const endpoint = useAI ? "/explain_plus" : (isPython ? "/explain" : "/explain_plus");
-
     try {
-      const res = await fetch(`http://127.0.0.1:8000${endpoint}`, {
+      const res = await fetch("http://127.0.0.1:8000/explain", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code, language }),
       });
-      if (!res.ok) {
-        const msg = await res.text();
-        throw new Error(msg || `HTTP ${res.status}`);
-      }
+      if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
       setResult(data);
-      // switch tabs if diagram is available
-      if (data.diagram) setTab("flow");
-      else setTab("explain");
+      setTab(data?.diagram ? "flow" : "explain");
     } catch (e) {
       setError(String(e.message || e));
     } finally {
@@ -76,97 +56,109 @@ export default function App() {
     }
   }
 
-  function run() {
-    alert("Run not implemented yet — coming next.");
+  async function run() {
+    setError("");
+    setRunResult(null);
+    try {
+      const res = await fetch("http://127.0.0.1:8000/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, language, postlude: runAfter }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      setRunResult(data);
+      setTab("output");
+    } catch (e) {
+      setRunResult({ stdout: "", stderr: String(e.message || e), exit_code: 1 });
+      setTab("output");
+    }
   }
 
-  const page =
-    theme === "dark"
-      ? "min-h-screen bg-black text-zinc-100"
-      : "min-h-screen bg-white text-zinc-900";
-
   return (
-    <div className={`${page} p-6 space-y-4 transition-colors`}>
-      {/* Header */}
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="text-xl font-semibold">CodeLensAI</div>
-          <div className="text-xs opacity-60">AI-powered code explainer & flowchart</div>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="text-sm opacity-70">
-            ⌘/Ctrl+Enter → Run · ⌥/Alt+Enter → Explain
+    <div className="page">
+      <div className="container">
+        {/* Header */}
+        <header className="header">
+          <div>
+            <h1 className="title">CodeLensAI</h1>
+            <p className="subtitle">AI-powered code explainer &amp; flowchart</p>
           </div>
-          <LanguageToggle value={language} onChange={setLanguage} />
-          <ThemeToggle theme={theme} onChange={setTheme} />
-        </div>
-      </header>
+          <div className="controls-row">
+            <span className="hint">⌘/Ctrl+Enter → Run · ⌥/Alt+Enter → Explain</span>
+            <LanguageToggle value={language} onChange={setLanguage} />
+            <ThemeToggle theme={theme} onChange={setTheme} />
+          </div>
+        </header>
 
-      {/* Editor Card */}
-      <section className="rounded-2xl border border-zinc-800 overflow-hidden">
-        <div className="flex items-center justify-between px-3 py-2 bg-zinc-900/50">
-          <div className="text-sm text-zinc-300">Editor</div>
-          <div className="flex items-center gap-3">
-            <label className="text-sm text-zinc-400 flex items-center gap-2">
+        {/* Editor Card */}
+        <section className="card">
+          <div className="card-bar">
+            <div className="card-title">Editor</div>
+            <div className="controls-row">
+              <button className="btn" onClick={run}>▶ Run</button>
+              <button className="btn primary" onClick={explain}>✨ Explain</button>
+            </div>
+          </div>
+          <div className="card-body">
+            <CodeEditor
+              language={language}
+              value={code}
+              onChange={setCode}
+              onRun={run}
+              onExplain={explain}
+              height="420px"
+            />
+
+            {/* Run-after input */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+              <label className="text-xs">Run after:</label>
               <input
-                type="checkbox"
-                checked={useAI}
-                onChange={(e) => setUseAI(e.target.checked)}
+                value={runAfter}
+                onChange={(e) => setRunAfter(e.target.value)}
+                placeholder="print(two_sum([2,7,11,15], 9))"
+                style={{
+                  flex: 1,
+                  padding: "6px 8px",
+                  borderRadius: 10,
+                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+                  fontSize: 12,
+                  background: "var(--panel-2)",
+                  color: "var(--fg)",
+                  border: "1px solid var(--border)",
+                }}
               />
-              AI enhance
-            </label>
-            <button
-              onClick={run}
-              className="px-3 py-1.5 text-sm rounded-xl border border-zinc-700 hover:bg-zinc-800"
-            >
-              ▶ Run
-            </button>
-            <button
-              onClick={explain}
-              className="px-3 py-1.5 text-sm rounded-xl border border-emerald-700 text-emerald-200 hover:bg-emerald-900/30"
-            >
-              ✨ Explain
-            </button>
+            </div>
           </div>
-        </div>
-        <div className="p-3 bg-zinc-950">
-          <CodeEditor
-            language={language}
-            value={code}
-            onChange={setCode}
-            onRun={run}
-            onExplain={explain}
-            height="420px"
-            placeholder={`Paste your ${language} function…`}
-          />
-        </div>
-      </section>
+        </section>
 
-      {/* Results Card */}
-      <section className="rounded-2xl border border-zinc-800 overflow-hidden">
-        <div className="flex items-center justify-between px-3 py-2 bg-zinc-900/50">
-          <Tabs
-            value={tab}
-            onChange={setTab}
-            items={[
-              { value: "explain", label: "Explanation" },
-              { value: "flow", label: "Flowchart" },
-            ]}
-          />
-          <div className="text-xs text-zinc-500">
-            {loading ? "Explaining…" : error ? "Error" : result ? "Ready" : "Idle"}
+        {/* Results Card */}
+        <section className="card">
+          <div className="card-bar">
+            <Tabs
+              value={tab}
+              onChange={setTab}
+              tabs={[
+                { key: "explain", label: "Explanation" },
+                { key: "flow", label: "Flowchart" },
+                { key: "output", label: "Output" },
+              ]}
+            />
+            <div className="text-xs">
+              {loading ? "Working…" : error ? "Error" : (result || runResult) ? "Ready" : "Idle"}
+            </div>
           </div>
-        </div>
-
-        <div className="p-3 bg-zinc-950">
-          <OutputPanel
-            result={result}
-            error={error}
-            loading={loading}
-            activeTab={tab}
-          />
-        </div>
-      </section>
+          <div className="card-body">
+            <OutputPanel
+              result={result}
+              error={error}
+              loading={loading}
+              activeTab={tab}
+              runResult={runResult}
+            />
+          </div>
+        </section>
+      </div>
     </div>
   );
 }

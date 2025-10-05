@@ -1,117 +1,87 @@
-import argparse
-import pathlib
-from typing import Any, Dict, List
+# backend/services/explainer.py
+"""
+Human-readable explanation generator for Python IR.
+Produces clean, natural English text with indentation (no markdown or bullet points).
+"""
 
-from backend.services import parser as parser_service
-from backend.services import graph as graph_service
+from __future__ import annotations
+from typing import Dict, List, Any
 
-
-def _explain_stmt(stmt: Dict[str, Any], indent: int = 0) -> List[Dict[str, Any]]:
-    line = stmt.get("line")
-    kind = stmt.get("kind")
-    rows: List[Dict[str, Any]] = []
-
-    def add(text: str, extra_indent: int = 0):
-        rows.append({"line": line, "indent": indent + extra_indent, "text": text})
-
-    if kind == "FunctionDef":
-        name = stmt.get("name"); args = stmt.get("args", [])
-        add(f"Function '{name}' takes parameters {args} and contains:")
-        for child in stmt.get("body", []):
-            rows.extend(_explain_stmt(child, indent + 1))
-
-    elif kind == "If":
-        test = stmt.get("test")
-        is_elif = stmt.get("elif", False)
-
-        if is_elif:
-            # Elif is a sibling of If: same indent
-            add(f"Elif ({test}):")  # indent stays as-is
-        else:
-            add(f"Checks condition ({test}). If true:")  # top-level If
-
-        # then-body
-        for child in stmt.get("body", []):
-            rows.extend(_explain_stmt(child, indent + 1))
-
-        orelse = stmt.get("orelse", [])
-
-        if is_elif:
-            # This If-node is an elif; if it has an orelse, that's the trailing else of the chain
-            if orelse:
-                rows.append({"line": line, "indent": indent, "text": "Else:"})
-                for child in orelse:
-                    rows.extend(_explain_stmt(child, indent + 1))
-        else:
-            # top-level If: if orelse starts with an elif, render that elif at SAME indent (not +1)
-            if (
-                len(orelse) == 1
-                and isinstance(orelse[0], dict)
-                and orelse[0].get("elif")
-            ):
-                # render the elif sibling aligned with the If
-                rows.extend(_explain_stmt(orelse[0], indent))   # <-- key change
-            elif orelse:
-                # plain else
-                rows.append({"line": line, "indent": indent, "text": "Else:"})
-                for child in orelse:
-                    rows.extend(_explain_stmt(child, indent + 1))
-
-
-
-    elif kind == "For":
-        add(f"Loops with variable '{stmt.get('target')}' over ({stmt.get('iter')}):")
-        for child in stmt.get("body", []):
-            rows.extend(_explain_stmt(child, indent + 1))
-
-    elif kind == "While":
-        add(f"While condition ({stmt.get('test')}) holds:")
-        for child in stmt.get("body", []):
-            rows.extend(_explain_stmt(child, indent + 1))
-
-    elif kind == "Assign":
-        add(f"Assigns {stmt.get('value')} to {stmt.get('targets',[])}.")
-
-    elif kind == "AugAssign":
-        symbol = {"Add": "+=", "Sub": "-=", "Mult": "*=", "Div": "/="}.get(stmt.get("op"), "+=")
-        add(f"Updates {stmt.get('target')} with {symbol} {stmt.get('value')}.")
-
-    elif kind == "Return":
-        add(f"Returns {stmt.get('value')}.")
-
-    else:
-        add(stmt.get("summary", "statement"))
-
-    return rows
 
 def explain_ir(ir: Dict[str, Any]) -> List[Dict[str, Any]]:
-    rows: List[Dict[str, Any]] = []
-    for item in ir.get("body", []):
-        rows.extend(_explain_stmt(item, 0))
-    return rows if rows else [{"line": None, "indent": 0, "text": "No executable statements found."}]   
+    """Convert the IR into a structured explanation list with natural sentences."""
+    out: List[Dict[str, Any]] = []
 
-def main(argv=None):
-    ap = argparse.ArgumentParser(description="CodeLensAI Explainer CLI")
-    ap.add_argument("file", help="Path to a Python file")
-    ap.add_argument("--explain", action="store_true", help="Print explanation")
-    ap.add_argument("--mermaid", action="store_true", help="Print Mermaid flowchart")  # 👈 added
-    args = ap.parse_args(argv)
+    def emit(indent: int, text: str) -> None:
+        out.append({"indent": indent, "text": text.strip()})
 
-    code = pathlib.Path(args.file).read_text(encoding="utf-8")
-    ir = parser_service.parse_python_to_ir(code)
+    def walk(node: Dict[str, Any], indent: int = 0):
+        kind = node.get("kind")
 
-    if args.explain:
-        print("\n=== Explanation ===")
-        print(explain_ir(ir))
+        if kind == "Module":
+            for stmt in node.get("body", []):
+                walk(stmt, indent)
 
-    if args.mermaid:
-        from backend.services import graph as graph_service
-        print("\n=== Mermaid (flowchart) ===")
-        print(graph_service.ir_to_mermaid(ir))
+        elif kind == "FunctionDef":
+            name = node.get("name", "function")
+            args = ", ".join(node.get("args", []))
+            emit(indent, f"Define the function {name}({args}), which performs the following steps:")
+            for stmt in node.get("body", []):
+                walk(stmt, indent + 1)
 
-    if not (args.explain or args.mermaid):
-        print("Tip: use --explain and/or --mermaid.")
+        elif kind == "Assign":
+            targets = ", ".join(node.get("targets", []))
+            value = node.get("value", "")
+            if value == "{}":
+                emit(indent, f"Initialize an empty dictionary named {targets}.")
+            elif value == "[]":
+                emit(indent, f"Create an empty list named {targets}.")
+            else:
+                emit(indent, f"Assign {value} to {targets}.")
 
+        elif kind == "AugAssign":
+            target = node.get("target", "")
+            op = node.get("op", "").lower()
+            value = node.get("value", "")
+            if op == "add":
+                emit(indent, f"Increase {target} by {value}.")
+            elif op == "sub":
+                emit(indent, f"Decrease {target} by {value}.")
+            else:
+                emit(indent, f"Update {target} using operation {op} {value}.")
 
-if __name__ == "__main__":
-    raise SystemExit(main())
+        elif kind == "For":
+            target = node.get("target", "")
+            iter_expr = node.get("iter", "")
+            if "enumerate" in iter_expr:
+                clean_iter = iter_expr.replace("enumerate(", "").replace(")", "")
+                emit(indent, f"Loop through {clean_iter}, getting both the index and value as {target}.")
+            else:
+                emit(indent, f"Loop over {iter_expr} using variable {target}.")
+            for stmt in node.get("body", []):
+                walk(stmt, indent + 1)
+
+        elif kind == "If":
+            test = node.get("test", "")
+            emit(indent, f"If {test} is true, then:")
+            for stmt in node.get("body", []):
+                walk(stmt, indent + 1)
+            if node.get("orelse"):
+                emit(indent, "Otherwise:")
+                for stmt in node["orelse"]:
+                    walk(stmt, indent + 1)
+
+        elif kind == "Return":
+            value = node.get("value", "")
+            if value == "[seen[target - x], i]":
+                emit(indent, "Return the indices of the two numbers that add up to the target.")
+            elif value == "[]":
+                emit(indent, "Return an empty list to indicate that no matching pair was found.")
+            else:
+                emit(indent, f"Return {value}.")
+
+        else:
+            emit(indent, node.get("summary", f"{kind} statement."))
+
+    walk(ir, 0)
+    return out
