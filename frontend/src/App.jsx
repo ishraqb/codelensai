@@ -45,16 +45,38 @@ export default function App() {
 
   // Editor state
   const [language, setLanguage] = useState("python");
-  const [code, setCode] = useState(
-`def two_sum(nums, target):
+  // Default sample snippets for each language
+  const PY_SAMPLE = `def two_sum(nums, target):
     seen = {}
     for i, x in enumerate(nums):
         if target - x in seen:
             return [seen[target - x], i]
         seen[x] = i
-    return []`
-  );
-  const [runAfter, setRunAfter] = useState("print(two_sum([2,7,11,15], 9))");
+    return []`;
+  const PY_RUN = "print(two_sum([2,7,11,15], 9))";
+  const JS_SAMPLE = `function twoSum(nums, target) {
+  const seen = {};
+  for (let i = 0; i < nums.length; i++) {
+    const x = nums[i];
+    if ((target - x) in seen) return [seen[target - x], i];
+    seen[x] = i;
+  }
+  return [];
+}`;
+  const JS_RUN = "console.log(twoSum([2,7,11,15], 9));";
+  const TS_SAMPLE = `function twoSum(nums: number[], target: number): number[] {
+  const seen: Record<number, number> = {};
+  for (let i = 0; i < nums.length; i++) {
+    const x = nums[i];
+    if ((target - x) in seen) return [seen[target - x], i];
+    seen[x] = i;
+  }
+  return [];
+}`;
+  const TS_RUN = JS_RUN;
+
+  const [code, setCode] = useState(PY_SAMPLE);
+  const [runAfter, setRunAfter] = useState(PY_RUN);
 
   // Results state
   const [loading, setLoading] = useState(false);
@@ -105,6 +127,41 @@ export default function App() {
       setRunResult({ stdout: "", stderr: msg, exit_code: 1 });
     }
   }
+
+  // Keep the "Run after" helper aligned with selected language
+  useEffect(() => {
+    const lang = (language || "python").toLowerCase();
+    // If user hasn't edited from defaults, swap both code and runAfter to matching samples
+    const isDefaultPy = code.trim() === PY_SAMPLE.trim();
+    const isDefaultJs = code.trim() === JS_SAMPLE.trim();
+    const isDefaultTs = code.trim() === TS_SAMPLE.trim();
+
+    if (lang === "python") {
+      if (isDefaultJs || isDefaultTs) setCode(PY_SAMPLE);
+      if (runAfter.trim() === JS_RUN.trim() || runAfter.trim() === TS_RUN.trim()) setRunAfter(PY_RUN);
+      // Also convert common names if user used defaults but tweaked formatting
+      if (/console\.log\(/.test(runAfter) || /twoSum\(/.test(runAfter)) {
+        setRunAfter((prev) => prev.replace(/console\.log\(/g, "print(").replace(/twoSum\(/g, "two_sum("));
+      }
+      return;
+    }
+    if (lang === "javascript") {
+      if (isDefaultPy || isDefaultTs) setCode(JS_SAMPLE);
+      if (runAfter.trim() === PY_RUN.trim() || runAfter.trim() === TS_RUN.trim()) setRunAfter(JS_RUN);
+      if (/^\s*print\(/.test(runAfter) || /two_sum\(/.test(runAfter)) {
+        setRunAfter((prev) => prev.replace(/print\(/g, "console.log(").replace(/two_sum\(/g, "twoSum("));
+      }
+      return;
+    }
+    if (lang === "typescript") {
+      if (isDefaultPy || isDefaultJs) setCode(TS_SAMPLE);
+      if (runAfter.trim() === PY_RUN.trim() || runAfter.trim() === JS_RUN.trim()) setRunAfter(TS_RUN);
+      if (/^\s*print\(/.test(runAfter) || /two_sum\(/.test(runAfter)) {
+        setRunAfter((prev) => prev.replace(/print\(/g, "console.log(").replace(/two_sum\(/g, "twoSum("));
+      }
+      return;
+    }
+  }, [language]);
 
   // Backend actions
   async function explain() {

@@ -1,12 +1,18 @@
 import os
 from typing import List, Dict, Any
-from openai import OpenAI
+
+try:
+    from openai import OpenAI  # optional
+except Exception:  # pragma: no cover - optional dependency may be absent
+    OpenAI = None  # type: ignore
 
 _client = None
 
 def _get_client():
     global _client
     if _client is None:
+        if OpenAI is None:
+            raise RuntimeError("OpenAI client not available. Install 'openai' and set OPENAI_API_KEY.")
         _client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     return _client
 

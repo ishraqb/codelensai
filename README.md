@@ -1,15 +1,17 @@
 # CodeLensAI
 
-**CodeLensAI** is an AI-powered web app that explains Python code and visualizes its logic as a flowchart.  
+**CodeLensAI** is an AI-powered web app that explains code and visualizes its logic as a flowchart.  
 Built with **React**, **FastAPI**, **Tailwind CSS**, and **Mermaid.js**.
 
 ---
 
 ## ✨ Features
 
-- Paste or upload Python code and get a natural-language explanation  
+- Paste or upload code and get a natural-language explanation  
 - View a generated **flowchart** representing your program’s logic  
-- Run code with a customizable “Run after” snippet (e.g., `print(two_sum([2,7,11,15], 9))`)  
+- Run code with a customizable “Run after” snippet  
+  - Python: `print(two_sum([2,7,11,15], 9))`  
+  - JavaScript: `console.log(twoSum([2,7,11,15], 9));`  
 - Clean, responsive UI with **dark/light mode** toggle  
 - Local-first design — works entirely on your machine  
 
@@ -19,7 +21,7 @@ Built with **React**, **FastAPI**, **Tailwind CSS**, and **Mermaid.js**.
 
 **Frontend:** React, Vite, Tailwind CSS, CodeMirror, Mermaid.js  
 **Backend:** FastAPI (Python), AST parsing, Uvicorn  
-**Language Support:** Python (for now)
+**Language Support:** Python, JavaScript, TypeScript
 
 ---
 
@@ -30,8 +32,9 @@ Built with **React**, **FastAPI**, **Tailwind CSS**, and **Mermaid.js**.
 Make sure you have:
 
 - **Python** 3.10+ (works best on 3.11+)  
-- **Node.js** 18+ (LTS recommended)  
-- **npm** or **yarn**
+- **Node.js** 18+ (LTS recommended) — required for JavaScript/TypeScript run  
+- **npm** or **yarn**  
+- For TypeScript run: either **ts-node** or **tsx** installed globally
 
 Works on macOS, Windows, and Linux.
 
@@ -81,7 +84,7 @@ Open the URL printed in your terminal (usually http://localhost:5173).
 
 ### 5. Using the App
 
-1. **Edit or upload Python code**  
+1. **Edit or upload code**  
    - Paste code directly or click **📂 Upload File**  
    - (Optional) Add a “Run after” line (e.g., `print(result)`)
 
@@ -91,11 +94,25 @@ Open the URL printed in your terminal (usually http://localhost:5173).
 
 3. **Run**  
    - Click **▶ Run** to execute code and display results in the **Output** tab  
+   - JavaScript requires Node to be available in PATH  
+   - TypeScript requires `ts-node` or `tsx` to be available in PATH  
 
 4. **Theme**  
    - Use the toggle to switch between dark and light modes  
 
-> Only Python is supported at this time. Other languages will return a “not supported” message.
+#### Language notes
+
+- Python: works out of the box.  
+- JavaScript: uses your local Node.js runtime.  
+- TypeScript: requires one of:
+
+```
+npm i -g tsx
+# or
+npm i -g ts-node typescript
+```
+
+After installation, open a new terminal so your PATH updates and restart the frontend if needed.
 
 ---
 
