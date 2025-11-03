@@ -3,6 +3,7 @@ from __future__ import annotations
 import subprocess
 import sys
 import tempfile
+import os
 from typing import Dict
 
 PYTHON_BIN = sys.executable  # use venv python
@@ -44,4 +45,11 @@ def run_python(code: str, timeout_sec: int = 3, postlude: str = "") -> Dict[str,
             "stderr": f"[Runner error] {e}",
             "exit_code": 1,
         }
+    finally:
+        try:
+            if path and os.path.exists(path):
+                os.unlink(path)
+        except Exception:
+            # Best-effort cleanup; ignore unlink errors
+            pass
 

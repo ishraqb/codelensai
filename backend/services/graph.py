@@ -159,7 +159,27 @@ def ir_to_mermaid(ir: Dict[str, Any]) -> str:
             target = _clean(stmt.get("target"))
             op = _clean(stmt.get("op") or "")
             value = _clean(stmt.get("value"))
-            lbl = f"{target} {op and op.lower()}= {value}".replace("add=", "+=")
+            # Map common ops: Add/Sub/Mult/Div/Mod/FloorDiv/Pow/BitAnd/BitOr/BitXor/LShift/RShift
+            op_map = {
+                "add": "+",
+                "sub": "-",
+                "mult": "*",
+                "div": "/",
+                "truediv": "/",
+                "floordiv": "//",
+                "mod": "%",
+                "pow": "**",
+                "lshift": "<<",
+                "rshift": ">>",
+                "bitand": "&",
+                "bitor": "|",
+                "bitxor": "^",
+            }
+            sym = op_map.get(op.lower(), op.lower())
+            lbl = f"{target} {sym}+= {value}" if sym in {"+","-","*","/","//","%","**","<<",">>","&","|","^"} else f"{target} {op and op.lower()}= {value}"
+            # Fix spacing for standard ops
+            for k, v in op_map.items():
+                lbl = lbl.replace(f" {v}+=", f" {v}=")
             return [b.rect(lbl)]
 
         if kind == "Return":
