@@ -36,6 +36,7 @@ function langFromFilename(name = "") {
 }
 
 export default function App() {
+  const API_BASE = (import.meta.env && import.meta.env.VITE_API_BASE) || "http://127.0.0.1:8000";
   // Theme
   const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "dark");
   useEffect(() => {
@@ -169,7 +170,7 @@ export default function App() {
     setError("");
     setResult(null);
     try {
-      const res = await fetch("http://127.0.0.1:8000/explain", {
+      const res = await fetch(`${API_BASE}/explain`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code, language }),
@@ -190,7 +191,7 @@ export default function App() {
     setError("");
     setRunResult(null);
     try {
-      const res = await fetch("http://127.0.0.1:8000/run", {
+      const res = await fetch(`${API_BASE}/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code, language, postlude: runAfter }),
