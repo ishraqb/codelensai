@@ -14,8 +14,7 @@ try:
 except Exception:
     run_javascript = None
     run_typescript = None
-
-
+    
 app = FastAPI(title="CodeLensAI", version="0.5.0")
 
 # ---------- CORS ----------
