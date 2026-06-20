@@ -1,0 +1,4 @@
+# CodeLensAI's serverless API (api/) runs on the Python standard library only —
+# ast, json, urllib, http.server — so there are no third-party dependencies to
+# install. This file is intentionally empty (it tells Vercel to use the Python
+# runtime without pulling extra packages).
