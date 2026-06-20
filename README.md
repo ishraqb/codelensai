@@ -1,135 +1,88 @@
 # CodeLensAI
 
-**CodeLensAI** is an AI-powered web app that explains code and visualizes its logic as a flowchart.  
-Built with **React**, **FastAPI**, **Tailwind CSS**, and **Mermaid.js**.
+**Read code like a map.** Paste a function and CodeLensAI gives you three things at once:
+
+1. A **plain-English, line-by-line breakdown** of what the code does.
+2. An **AI-written summary** plus a **time-complexity estimate** (Big-O).
+3. A **flowchart** of the control flow, rendered with Mermaid.
+
+It supports **Python, JavaScript, and TypeScript**, runs entirely on free
+infrastructure, and needs no API key to work.
+
+Live: https://codelensai-zeta.vercel.app
 
 ---
 
-## ✨ Features
+## How it works
 
-- Paste or upload code and get a natural-language explanation  
-- View a generated **flowchart** representing your program’s logic  
-- Run code with a customizable “Run after” snippet  
-  - Python: `print(two_sum([2,7,11,15], 9))`  
-  - JavaScript: `console.log(twoSum([2,7,11,15], 9));`  
-- Clean, responsive UI with **dark/light mode** toggle  
-- Local-first design — works entirely on your machine  
+```
+frontend/ (React + Vite)  ──fetch──>  api/explain.py  (Vercel Python function)
+                                            │
+                                            ├─ _lib/parser.py     Python -> IR (via ast)
+                                            ├─ _lib/parser_js.py  JS/TS  -> IR (lightweight)
+                                            ├─ _lib/explainer.py  IR -> plain-English steps
+                                            ├─ _lib/graph.py      IR -> Mermaid flowchart
+                                            └─ _lib/ai.py         IR + code -> AI summary + Big-O
+```
 
----
+The whole thing deploys to **one Vercel project**: the React app is served as
+static files and the Python analyzer runs as a serverless function at
+`/api/explain`. The backend uses **only the Python standard library**, so there
+are no dependencies to install and cold starts stay quick.
 
-## 🧰 Tech Stack
+### The AI part
 
-**Frontend:** React, Vite, Tailwind CSS, CodeMirror, Mermaid.js  
-**Backend:** FastAPI (Python), AST parsing, Uvicorn  
-**Language Support:** Python, JavaScript, TypeScript
+`_lib/ai.py` asks a language model to summarize the code and estimate its
+complexity. It tries providers in order and always degrades gracefully:
 
----
+1. **Google Gemini** — used if `GEMINI_API_KEY` is set (free tier, no card).
+2. **Pollinations** — a free, keyless endpoint used when no Gemini key exists.
+3. **Built-in heuristic** — if both are unavailable, a deterministic Big-O
+   estimate (from loop nesting) is returned so the app never breaks.
 
-## 🚀 Getting Started
-
-### 1. Prerequisites
-
-Make sure you have:
-
-- **Python** 3.10+ (works best on 3.11+)  
-- **Node.js** 18+ (LTS recommended) — required for JavaScript/TypeScript run  
-- **npm** or **yarn**  
-- For TypeScript run: either **ts-node** or **tsx** installed globally
-
-Works on macOS, Windows, and Linux.
+Because of the fallback chain, **CodeLensAI works out of the box for free.**
+Adding a Gemini key just makes the AI summaries faster and more reliable.
 
 ---
 
-### 2. Clone the repository
+## Running locally
 
-\`\`\`bash
-git clone <your-repo-url>
-cd codelensai
-\`\`\`
+You need **Node 18+** and **Python 3.10+**.
 
----
+The simplest way to run the full stack (frontend + serverless API) locally is the
+Vercel CLI, which mirrors production exactly:
 
-### 3. Set up and run the backend (FastAPI)
+```bash
+npm i -g vercel
+vercel dev
+```
 
-\`\`\`bash
-cd backend
-python -m venv .venv
+Or run just the frontend against the deployed API:
 
-# macOS / Linux
-source .venv/bin/activate
-# Windows PowerShell
-# .venv\Scripts\Activate.ps1
-
-pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
-\`\`\`
-
-The backend runs on http://127.0.0.1:8000 by default.
-
----
-
-### 4. Set up and run the frontend (Vite + React)
-
-Open a new terminal window:
-
-\`\`\`bash
+```bash
 cd frontend
 npm install
-npm run dev
-\`\`\`
-
-Open the URL printed in your terminal (usually http://localhost:5173).
-
----
-
-### 5. Using the App
-
-1. **Edit or upload code**  
-   - Paste code directly or click **📂 Upload File**  
-   - (Optional) Add a “Run after” line (e.g., `print(result)`)
-
-2. **Explain**  
-   - Click **✨ Explain** to generate a human-readable explanation  
-   - View details in the **Explanation** or **Flowchart** tabs  
-
-3. **Run**  
-   - Click **▶ Run** to execute code and display results in the **Output** tab  
-   - JavaScript requires Node to be available in PATH  
-   - TypeScript requires `ts-node` or `tsx` to be available in PATH  
-
-4. **Theme**  
-   - Use the toggle to switch between dark and light modes  
-
-#### Language notes
-
-- Python: works out of the box.  
-- JavaScript: uses your local Node.js runtime.  
-- TypeScript: requires one of:
-
-```
-npm i -g tsx
-# or
-npm i -g ts-node typescript
+npm run dev   # set VITE_API_BASE to your API origin if needed
 ```
 
-After installation, open a new terminal so your PATH updates and restart the frontend if needed.
+Run the tests (no network required):
+
+```bash
+python tests/test_parser.py
+```
 
 ---
 
-## 🧠 Troubleshooting
+## Optional: add a free Gemini key
 
-| Issue | Fix |
-|------|-----|
-| Blank page or Vite error | Stop and restart the frontend (`npm run dev`) |
-| Backend port already in use | Run `uvicorn main:app --reload --port 8001` |
-| Flowchart not appearing | Click **Explain** first; the backend must return a diagram |
-| CORS errors | Start the backend **before** the frontend |
-| Windows PowerShell can’t activate venv | Run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` |
+1. Create a key at https://aistudio.google.com/apikey (free, no credit card).
+2. Add it to your Vercel project as an environment variable named
+   `GEMINI_API_KEY`, then redeploy.
+
+That's it — the app will automatically prefer Gemini for summaries.
 
 ---
 
-## 🧑‍💻 Author
+## Author
 
-Developed by **Ishraq Basher**  
-Computer Science Major · Data Science & Mathematics Minor  
-New York University Tandon School of Engineering
+Built by **Ishraq Basher** — Computer Science @ NYU Tandon.

@@ -5,15 +5,15 @@ __pycache__/
 
 # Node
 frontend/node_modules/
+node_modules/
 dist/
 .vite/
 .DS_Store
 
+# Vercel
+.vercel
+
 # Env / local
 .env
+.env*.local
 *.log
-__pycache__/
-*.pyc
-
-__pycache__/
-*.pyc
