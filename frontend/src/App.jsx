@@ -1,62 +1,24 @@
-// frontend/src/App.jsx
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import CodeEditor from "./components/CodeEditor";
 import OutputPanel from "./components/OutputPanel";
-import ThemeToggle from "./components/ThemeToggle";
-import LanguageToggle from "./components/LanguageToggle";
-import Tabs from "./components/Tabs";
-import "./App.css";
 
+// Same-origin in production (the API lives at /api on the same Vercel deploy).
+// Override with VITE_API_BASE only if you run the API somewhere else.
+const API_BASE = (import.meta.env && import.meta.env.VITE_API_BASE) || "";
 
-const API_BASE = (import.meta.env && import.meta.env.VITE_API_BASE) || "http://127.0.0.1:8000";
-// Infer editor language from filename
-function langFromFilename(name = "") {
-  const ext = name.toLowerCase().split(".").pop();
-  switch (ext) {
-    case "py": return "python";
-    case "js":
-    case "mjs":
-    case "cjs": return "javascript";
-    case "ts":
-    case "tsx": return "typescript";
-    case "java": return "java";
-    case "cpp":
-    case "cc":
-    case "cxx":
-    case "hpp":
-    case "h": return "cpp";
-    case "go": return "go";
-    case "rs": return "rust";
-    case "rb": return "ruby";
-    case "php": return "php";
-    case "cs": return "csharp";
-    case "swift": return "swift";
-    case "kt":
-    case "kts": return "kotlin";
-    default: return null;
-  }
-}
-
-export default function App() {
-  // Theme
-  const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "dark");
-  useEffect(() => {
-    localStorage.setItem("theme", theme);
-    document.documentElement.setAttribute("data-theme", theme);
-  }, [theme]);
-
-  // Editor state
-  const [language, setLanguage] = useState("python");
-  // Default sample snippets for each language
-  const PY_SAMPLE = `def two_sum(nums, target):
+// Starter snippets so the app is never staring at an empty editor.
+const SAMPLES = {
+  python: {
+    code: `def two_sum(nums, target):
     seen = {}
     for i, x in enumerate(nums):
         if target - x in seen:
             return [seen[target - x], i]
         seen[x] = i
-    return []`;
-  const PY_RUN = "print(two_sum([2,7,11,15], 9))";
-  const JS_SAMPLE = `function twoSum(nums, target) {
+    return []`,
+  },
+  javascript: {
+    code: `function twoSum(nums, target) {
   const seen = {};
   for (let i = 0; i < nums.length; i++) {
     const x = nums[i];
@@ -64,9 +26,10 @@ export default function App() {
     seen[x] = i;
   }
   return [];
-}`;
-  const JS_RUN = "console.log(twoSum([2,7,11,15], 9));";
-  const TS_SAMPLE = `function twoSum(nums: number[], target: number): number[] {
+}`,
+  },
+  typescript: {
+    code: `function twoSum(nums: number[], target: number): number[] {
   const seen: Record<number, number> = {};
   for (let i = 0; i < nums.length; i++) {
     const x = nums[i];
@@ -74,220 +37,204 @@ export default function App() {
     seen[x] = i;
   }
   return [];
-}`;
-  const TS_RUN = JS_RUN;
+}`,
+  },
+};
 
-  const [code, setCode] = useState(PY_SAMPLE);
-  const [runAfter, setRunAfter] = useState(PY_RUN);
+// Map a dropped/uploaded filename to one of our supported languages.
+function langFromFilename(name = "") {
+  const ext = name.toLowerCase().split(".").pop();
+  if (ext === "py") return "python";
+  if (["js", "mjs", "cjs", "jsx"].includes(ext)) return "javascript";
+  if (["ts", "tsx"].includes(ext)) return "typescript";
+  return null;
+}
 
-  // Results state
+function LensMark() {
+  return (
+    <svg className="lens" viewBox="0 0 32 32" aria-hidden="true">
+      <rect width="32" height="32" rx="8" fill="var(--surface-2)" stroke="var(--border-strong)" />
+      <circle cx="14" cy="14" r="7" fill="none" stroke="var(--accent)" strokeWidth="2.4" />
+      <line x1="19" y1="19" x2="26" y2="26" stroke="var(--accent)" strokeWidth="2.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export default function App() {
+  const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "dark");
+  useEffect(() => {
+    localStorage.setItem("theme", theme);
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
+
+  const [language, setLanguage] = useState("python");
+  const [code, setCode] = useState(SAMPLES.python.code);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
-  const [runResult, setRunResult] = useState(null);
-  const [tab, setTab] = useState("explain");
+  const [tab, setTab] = useState("steps");
 
-  // File upload
   const fileInputRef = useRef(null);
-  const MAX_SIZE_MB = 2;
+  const MAX_MB = 2;
 
-  function openFilePicker() {
-    fileInputRef.current?.click();
+  // Swap the sample when the language changes, but only if the user hasn't
+  // started writing their own code (so we never clobber real work).
+  const isUntouched = useMemo(
+    () => Object.values(SAMPLES).some((s) => s.code.trim() === code.trim()),
+    [code]
+  );
+  useEffect(() => {
+    if (isUntouched) setCode(SAMPLES[language].code);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [language]);
+
+  async function analyze() {
+    if (!code.trim()) return;
+    setLoading(true);
+    setError("");
+    setResult(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/explain`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, language }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || `Request failed (${res.status})`);
+      setResult(data);
+      setTab(data.diagram ? "steps" : "steps");
+    } catch (e) {
+      setError(String(e.message || e));
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function onPickFile(e) {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-
-    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
-      setError(`File too large. Max ${MAX_SIZE_MB} MB.`);
-      setTab("output");
-      setRunResult({
-        stdout: "",
-        stderr: `Upload blocked: file is ${(file.size / (1024 * 1024)).toFixed(2)} MB (limit ${MAX_SIZE_MB} MB).`,
-        exit_code: 1,
-      });
+    if (file.size > MAX_MB * 1024 * 1024) {
+      setError(`That file is too large (limit ${MAX_MB} MB).`);
       return;
     }
-
-    try {
-      const text = await file.text();
-      setCode(text);
-
-      const inferred = langFromFilename(file.name);
-      if (inferred) setLanguage(inferred);
-
-      setTab("explain");
-      setResult(null);
-      setRunResult(null);
-      setError("");
-    } catch (err) {
-      const msg = String(err?.message || err);
-      setError(msg);
-      setTab("output");
-      setRunResult({ stdout: "", stderr: msg, exit_code: 1 });
-    }
-  }
-
-  // Keep the "Run after" helper aligned with selected language
-  useEffect(() => {
-    const lang = (language || "python").toLowerCase();
-    // If user hasn't edited from defaults, swap both code and runAfter to matching samples
-    const isDefaultPy = code.trim() === PY_SAMPLE.trim();
-    const isDefaultJs = code.trim() === JS_SAMPLE.trim();
-    const isDefaultTs = code.trim() === TS_SAMPLE.trim();
-
-    if (lang === "python") {
-      if (isDefaultJs || isDefaultTs) setCode(PY_SAMPLE);
-      if (runAfter.trim() === JS_RUN.trim() || runAfter.trim() === TS_RUN.trim()) setRunAfter(PY_RUN);
-      // Also convert common names if user used defaults but tweaked formatting
-      if (/console\.log\(/.test(runAfter) || /twoSum\(/.test(runAfter)) {
-        setRunAfter((prev) => prev.replace(/console\.log\(/g, "print(").replace(/twoSum\(/g, "two_sum("));
-      }
-      return;
-    }
-    if (lang === "javascript") {
-      if (isDefaultPy || isDefaultTs) setCode(JS_SAMPLE);
-      if (runAfter.trim() === PY_RUN.trim() || runAfter.trim() === TS_RUN.trim()) setRunAfter(JS_RUN);
-      if (/^\s*print\(/.test(runAfter) || /two_sum\(/.test(runAfter)) {
-        setRunAfter((prev) => prev.replace(/print\(/g, "console.log(").replace(/two_sum\(/g, "twoSum("));
-      }
-      return;
-    }
-    if (lang === "typescript") {
-      if (isDefaultPy || isDefaultJs) setCode(TS_SAMPLE);
-      if (runAfter.trim() === PY_RUN.trim() || runAfter.trim() === JS_RUN.trim()) setRunAfter(TS_RUN);
-      if (/^\s*print\(/.test(runAfter) || /two_sum\(/.test(runAfter)) {
-        setRunAfter((prev) => prev.replace(/print\(/g, "console.log(").replace(/two_sum\(/g, "twoSum("));
-      }
-      return;
-    }
-  }, [language]);
-
-  // Backend actions
-  async function explain() {
-    setLoading(true);
-    setError("");
+    setCode(await file.text());
+    const inferred = langFromFilename(file.name);
+    if (inferred) setLanguage(inferred);
     setResult(null);
-    try {
-      const res = await fetch(`${API_BASE}/explain`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, language }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
-      setResult(data);
-      setTab(data?.diagram ? "flow" : "explain");
-    } catch (e) {
-      setError(String(e.message || e));
-      setTab("explain");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function run() {
     setError("");
-    setRunResult(null);
-    try {
-      const res = await fetch(`${API_BASE}/run`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, language, postlude: runAfter }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
-      setRunResult(data);
-      setTab("output");
-    } catch (e) {
-      setRunResult({ stdout: "", stderr: String(e.message || e), exit_code: 1 });
-      setTab("output");
-    }
   }
 
   return (
-    <div className="page">
-      <div className="container">
-        {/* Header */}
-        <header className="header">
+    <div className="app">
+      <header className="topbar">
+        <div className="brand">
+          <LensMark />
           <div>
-            <h1 className="title">CodeLensAI</h1>
-            <p className="subtitle">AI-powered code explainer &amp; flowchart</p>
+            <span className="wordmark">codelens<span className="ai">ai</span></span>
+            <span className="tag">read code like a map</span>
           </div>
-          <div className="controls-row">
-            <LanguageToggle value={language} onChange={setLanguage} />
-            <ThemeToggle theme={theme} onChange={setTheme} />
-          </div>
-        </header>
+        </div>
+        <div className="topbar-actions">
+          <select
+            className="select"
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+            aria-label="Language"
+          >
+            <option value="python">Python</option>
+            <option value="javascript">JavaScript</option>
+            <option value="typescript">TypeScript</option>
+          </select>
+          <button
+            className="btn"
+            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            aria-label="Toggle theme"
+          >
+            {theme === "dark" ? "◐ dark" : "◑ light"}
+          </button>
+        </div>
+      </header>
 
-        {/* Editor */}
-        <section className="card">
-          <div className="card-bar">
-            <div className="card-title">Editor</div>
-            <div className="controls-row">
-              <button className="btn" onClick={run}>▶ Run</button>
-              <button className="btn primary" onClick={explain}>✨ Explain</button>
-              <button className="btn" onClick={openFilePicker}>📂 Upload File</button>
+      <div className="workspace">
+        <section className="panel">
+          <div className="panel-head">
+            <span className="label">
+              <span className="dot" />
+              <span className="eyebrow">source</span>
+            </span>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button className="btn" onClick={() => fileInputRef.current?.click()}>
+                ↑ upload
+              </button>
+              <button className="btn primary" onClick={analyze} disabled={loading}>
+                {loading ? "analyzing…" : "▷ analyze"}
+              </button>
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".py,.js,.mjs,.cjs,.ts,.tsx,.java,.cpp,.cc,.cxx,.hpp,.h,.go,.rs,.rb,.php,.cs,.swift,.kt,.kts,.json,.txt"
+                accept=".py,.js,.mjs,.cjs,.jsx,.ts,.tsx,.txt"
                 style={{ display: "none" }}
                 onChange={onPickFile}
               />
             </div>
           </div>
-
-          <div className="card-body">
-            <CodeEditor
-              language={language}
-              value={code}
-              onChange={setCode}
-              onRun={run}
-              onExplain={explain}
-              height="420px"
-            />
-
-            <div className="run-after">
-              <label className="text-xs">Run after:</label>
-              <input
-                value={runAfter}
-                onChange={(e) => setRunAfter(e.target.value)}
-                placeholder="print(two_sum([2,7,11,15], 9))"
+          <div className="panel-body">
+            <div className="editor-shell">
+              <CodeEditor
+                language={language}
+                value={code}
+                onChange={setCode}
+                onAnalyze={analyze}
+                theme={theme}
+                height="440px"
               />
+            </div>
+            <div className="editor-hint">
+              <kbd>⌘</kbd>
+              <span>/</span>
+              <kbd>Ctrl</kbd>
+              <span>+</span>
+              <kbd>Enter</kbd>
+              <span>to analyze</span>
             </div>
           </div>
         </section>
 
-        {/* Results */}
-        <section className="card">
-          <div className="card-bar">
-            <Tabs
-              value={tab}
-              onChange={setTab}
-              tabs={[
-                { key: "explain", label: "Explanation" },
-                { key: "flow", label: "Flowchart" },
-                { key: "output", label: "Output" },
-              ]}
-            />
-            <div className="text-xs status">
-              {loading ? "Working…" : error ? "Error" : (result || runResult) ? "Ready" : "Idle"}
+        <section className="panel">
+          <div className="panel-head">
+            <span className="label">
+              <span className="dot" />
+              <span className="eyebrow">analysis</span>
+            </span>
+            <div className="segmented">
+              <button
+                className={tab === "steps" ? "active" : ""}
+                onClick={() => setTab("steps")}
+              >
+                steps
+              </button>
+              <button
+                className={tab === "flow" ? "active" : ""}
+                onClick={() => setTab("flow")}
+              >
+                flowchart
+              </button>
             </div>
           </div>
-          <div className="card-body">
-            <OutputPanel
-              result={result}
-              error={error}
-              loading={loading}
-              activeTab={tab}
-              runResult={runResult}
-            />
+          <div className="panel-body">
+            <OutputPanel result={result} error={error} loading={loading} activeTab={tab} />
           </div>
         </section>
       </div>
+
+      <footer className="footer">
+        <span>codelensai · built by Ishraq Basher</span>
+        <a href="https://github.com/ishraqb/codelensai" target="_blank" rel="noreferrer">
+          source on github ↗
+        </a>
+      </footer>
     </div>
   );
 }

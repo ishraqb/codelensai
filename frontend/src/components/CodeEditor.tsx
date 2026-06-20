@@ -1,19 +1,18 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { EditorView } from "@codemirror/view";
-import { EditorState, Extension } from "@codemirror/state";
+import { EditorState } from "@codemirror/state";
+import type { Extension } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { javascript } from "@codemirror/lang-javascript";
 import { python } from "@codemirror/lang-python";
 
 /**
- * CodeLensAI CodeEditor
- *
- * A modern CodeMirror 6 editor wrapper with:
- *  - Controlled value
- *  - Language switching (JS/TS + Python)
- *  - One Dark theme
- *  - Shortcuts: ⌘/Ctrl+Enter → Run, ⌥/Alt+Enter → Explain
+ * Thin CodeMirror 6 wrapper for CodeLensAI.
+ *  - Controlled value with light debouncing
+ *  - Python / JavaScript / TypeScript grammars
+ *  - Theme follows the app (One Dark in dark mode, default in light mode)
+ *  - Cmd/Ctrl+Enter triggers analysis
  */
 
 export type SupportedLanguage = "javascript" | "typescript" | "python";
@@ -22,13 +21,10 @@ export interface CodeEditorProps {
   language?: SupportedLanguage;
   value?: string;
   onChange?: (next: string) => void;
-  onRun?: () => void;
-  onExplain?: () => void;
+  onAnalyze?: () => void;
   readOnly?: boolean;
-  placeholder?: string;
+  theme?: "dark" | "light";
   height?: string;
-  minHeight?: string;
-  className?: string;
   debounceMs?: number;
 }
 
@@ -45,16 +41,13 @@ function langExtension(language: SupportedLanguage | undefined): Extension[] {
 }
 
 export default function CodeEditor({
-  language = "javascript",
+  language = "python",
   value = "",
   onChange,
-  onRun,
-  onExplain,
+  onAnalyze,
   readOnly = false,
-  placeholder,
-  height = "420px",
-  minHeight = "280px",
-  className,
+  theme = "dark",
+  height = "440px",
   debounceMs = 80,
 }: CodeEditorProps) {
   const [internal, setInternal] = useState<string>(value);
@@ -64,24 +57,19 @@ export default function CodeEditor({
     setInternal(value ?? "");
   }, [value]);
 
-  const baseExtensions = useMemo<Extension[]>(() => {
-    return [
+  const extensions = useMemo<Extension[]>(
+    () => [
       EditorView.lineWrapping,
       EditorView.theme({
-        ".cm-content": {
-          fontFamily:
-            "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
-          fontSize: "0.95rem",
-        },
-        ".cm-scroller": { lineHeight: 1.55 },
+        "&": { backgroundColor: "transparent" },
+        ".cm-content": { fontFamily: "var(--font-mono)" },
+        ".cm-scroller": { lineHeight: "1.6" },
       }),
       EditorState.readOnly.of(readOnly),
-    ];
-  }, [readOnly]);
-
-  const extensions = useMemo<Extension[]>(() => {
-    return [oneDark, ...baseExtensions, ...langExtension(language)];
-  }, [baseExtensions, language]);
+      ...langExtension(language),
+    ],
+    [readOnly, language]
+  );
 
   const handleChange = useCallback(
     (doc: string) => {
@@ -95,70 +83,30 @@ export default function CodeEditor({
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      const isMod = e.metaKey || e.ctrlKey;
-      if (isMod && e.key === "Enter") {
-        if (onRun) onRun();
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
         e.preventDefault();
-        return;
-      }
-      if (e.altKey && e.key === "Enter") {
-        if (onExplain) onExplain();
-        e.preventDefault();
+        onAnalyze?.();
       }
     },
-    [onRun, onExplain]
+    [onAnalyze]
   );
 
   return (
-    <div
-      className={"w-full " + (className ?? "")}
-      onKeyDown={onKeyDown}
-      role="group"
-      aria-label="Code editor"
-    >
-      {placeholder && !internal && (
-        <div className="text-sm text-zinc-400 pb-1">{placeholder}</div>
-      )}
-      <div className="rounded-2xl overflow-hidden shadow-sm ring-1 ring-zinc-800">
-        <CodeMirror
-          value={internal}
-          height={height}
-          minHeight={minHeight}
-          extensions={extensions}
-          theme={oneDark}
-          basicSetup={{
-            lineNumbers: true,
-            foldGutter: true,
-            highlightActiveLine: true,
-            highlightSelectionMatches: true,
-            autocompletion: true,
-            bracketMatching: true,
-          }}
-          onChange={handleChange}
-        />
-      </div>
-      <div className="flex items-center gap-2 pt-2 text-xs text-zinc-400">
-        <kbd className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700">
-          ⌘
-        </kbd>
-        <span>or</span>
-        <kbd className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700">
-          Ctrl
-        </kbd>
-        <span>+</span>
-        <kbd className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700">
-          Enter
-        </kbd>
-        <span>to run · </span>
-        <kbd className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700">
-          ⌥
-        </kbd>
-        <span>+</span>
-        <kbd className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700">
-          Enter
-        </kbd>
-        <span>to explain</span>
-      </div>
+    <div onKeyDown={onKeyDown} role="group" aria-label="Code editor">
+      <CodeMirror
+        value={internal}
+        height={height}
+        extensions={extensions}
+        theme={theme === "dark" ? oneDark : "light"}
+        basicSetup={{
+          lineNumbers: true,
+          foldGutter: true,
+          highlightActiveLine: true,
+          autocompletion: false,
+          bracketMatching: true,
+        }}
+        onChange={handleChange}
+      />
     </div>
   );
 }
