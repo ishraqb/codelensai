@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional
 
 # Fixed, trusted endpoints. These are constants, not derived from user input.
 _POLLINATIONS_URL = "https://text.pollinations.ai/openai"
-_GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+_GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 
 _TIMEOUT_SEC = 20
 
